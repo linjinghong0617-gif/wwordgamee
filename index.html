@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>单词消消乐 - 学习统计版</title>
+    <title>woowordgamee</title>
     <style>
         :root {
             --bg-color: #FDF5E6;
@@ -85,7 +85,12 @@
         }
         .main-btn:hover { opacity: 0.9; }
 
-        /* 资料库表格优化 */
+        .sync-btn {
+            background: none; border: 1px solid var(--morandi-brown); color: var(--morandi-brown);
+            padding: 5px 12px; border-radius: 15px; cursor: pointer; font-size: 12px; font-weight: bold;
+        }
+
+        /* 资料库表格 */
         .database-win {
             margin-top: 15px; max-height: 150px; overflow-y: auto;
             background: #fff; border-radius: 8px; font-size: 13px;
@@ -105,7 +110,7 @@
         /* 游戏板 */
         #game-board {
             display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-            gap: 20px; width: 95%; max-width: 1100px; justify-items: center; position: relative;
+            gap: 20px; width: 95%; max-width: 1100px; justify-items: center; position: relative; margin-top: 20px;
         }
 
         .bubble {
@@ -121,20 +126,20 @@
         #connection-svg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
         .connection-line { stroke: rgba(169, 132, 103, 0.5); stroke-width: 6; stroke-linecap: round; }
 
-        /* 成功弹窗 */
+        /* 弹窗层 */
         #success-layer {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.4); display: none; justify-content: center; align-items: center; z-index: 1000;
         }
         .modal {
-            background: white; padding: 40px; border-radius: 20px; text-align: center;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3); max-width: 400px;
+            background: white; padding: 30px; border-radius: 20px; text-align: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3); max-width: 400px; width: 80%;
         }
     </style>
 </head>
 <body>
 
-    <h1>单词统计消消乐</h1>
+    <h1>woowordgamee</h1>
 
     <div class="stats-info">
         <div>词库总量: <span id="total-words">0</span></div>
@@ -164,8 +169,13 @@
                 <tbody id="db-body"></tbody>
             </table>
         </div>
-        <div style="text-align: right; margin-top: 10px;">
-            <button id="clear-db" style="background:none; border:none; color:#999; cursor:pointer; font-size:12px;">清空所有数据</button>
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
+            <div>
+                <button class="sync-btn" id="export-btn">📤 导出词库</button>
+                <button class="sync-btn" id="import-btn">📥 导入词库</button>
+            </div>
+            <button id="clear-db" style="background:none; border:none; color:#999; cursor:pointer; font-size:11px;">清空所有数据</button>
         </div>
     </div>
 
@@ -178,12 +188,12 @@
             <p id="modal-msg">这一组单词已经全部消灭。</p>
             <button class="main-btn" id="next-btn">进入下一组</button>
             <button class="main-btn" id="restart-all-btn" style="display:none; background:#829356">从头复习</button>
+            <button class="main-btn" id="close-modal" style="background:#bbb; margin-top:10px;">暂时关闭</button>
         </div>
     </div>
 
     <script>
-        // 增加 count 字段初始化
-        let database = JSON.parse(localStorage.getItem('word_db_v3')) || [];
+        let database = JSON.parse(localStorage.getItem('word_db_v4')) || [];
         let startIndex = 0;
         let currentSize = 5;
         let firstSelection = null;
@@ -217,11 +227,44 @@
             document.getElementById('total-words-repeat').innerText = total;
             document.getElementById('learned-words').innerText = Math.min(startIndex, total);
             
-            localStorage.setItem('word_db_v3', JSON.stringify(database));
-            
+            localStorage.setItem('word_db_v4', JSON.stringify(database));
             const overallPercent = total === 0 ? 0 : (startIndex / total) * 100;
             progressBar.style.width = overallPercent + '%';
         }
+
+        // --- 同步功能逻辑 ---
+
+        // 导出：将数组转为 Base64 字符串（防乱码）
+        document.getElementById('export-btn').onclick = () => {
+            if (database.length === 0) return alert("词库是空的，没啥可导出的~");
+            const dataStr = JSON.stringify(database);
+            const encodedData = btoa(encodeURIComponent(dataStr)); // 加密处理
+            const promptMsg = "请复制下方的词库代码，并在其他设备上导入：";
+            window.prompt(promptMsg, encodedData);
+        };
+
+        // 导入：将字符串解析回数组
+        document.getElementById('import-btn').onclick = () => {
+            const code = window.prompt("请粘贴词库代码：");
+            if (code) {
+                try {
+                    const decodedData = decodeURIComponent(atob(code));
+                    const newDB = JSON.parse(decodedData);
+                    if (Array.isArray(newDB)) {
+                        if (confirm(`检测到 ${newDB.length} 个单词，是否覆盖当前词库？`)) {
+                            database = newDB;
+                            startIndex = 0;
+                            updateUI();
+                            alert("词库导入成功！");
+                        }
+                    }
+                } catch (e) {
+                    alert("代码格式不对，请确保复制了完整的导出代码。");
+                }
+            }
+        };
+
+        // --- 游戏基础逻辑 ---
 
         function addWords() {
             const text = document.getElementById('word-input').value.trim();
@@ -230,7 +273,6 @@
                 const date = new Date().toLocaleDateString();
                 for (let i = 0; i < tokens.length; i += 2) {
                     if (tokens[i] && tokens[i+1]) {
-                        // 新增单词默认次数为 0
                         database.push({ en: tokens[i], zh: tokens[i+1], date: date, count: 0 });
                     }
                 }
@@ -242,33 +284,19 @@
         window.deleteWord = (i) => { 
             if(confirm("确定删除这个单词吗？")) {
                 database.splice(i, 1); 
-                if(startIndex > 0) startIndex--;
                 updateUI(); 
             }
         };
 
         function initGame() {
-            clearLines();
-            board.innerHTML = '';
-            successLayer.style.display = 'none';
-            matchedCount = 0;
-            firstSelection = null;
-
+            clearLines(); board.innerHTML = ''; successLayer.style.display = 'none';
+            matchedCount = 0; firstSelection = null;
             let gameWords = database.slice(startIndex, startIndex + currentSize);
-            
-            if (database.length === 0) {
-                board.innerHTML = "<p style='color:#666'>词库空空如也，请先录入单词。</p>";
-                return;
-            }
-            if (gameWords.length === 0 && startIndex > 0) {
-                startIndex = 0; 
-                initGame();
-                return;
-            }
+            if (database.length === 0) { board.innerHTML = "请先录入单词。"; return; }
+            if (gameWords.length === 0) { startIndex = 0; initGame(); return; }
 
             let items = [];
             gameWords.forEach((p, idx) => {
-                // 这里的 idx 是相对于 gameWords 的，我们需要它在 database 中的真实索引来更新次数
                 const realIndex = startIndex + idx;
                 items.push({ text: p.en, match: p.zh, dbIndex: realIndex });
                 items.push({ text: p.zh, match: p.en, dbIndex: realIndex });
@@ -289,45 +317,26 @@
         function handleSelect(el, data, total) {
             if (el.classList.contains('hidden-bubble')) return;
             if (!firstSelection) {
-                firstSelection = { el, data };
-                el.classList.add('selected');
+                firstSelection = { el, data }; el.classList.add('selected');
             } else if (firstSelection.el === el) {
-                el.classList.remove('selected');
-                firstSelection = null;
+                el.classList.remove('selected'); firstSelection = null;
             } else {
                 drawLine(firstSelection.el, el);
                 if (firstSelection.data.match === data.text) {
-                    // 匹配成功：更新该词在资料库中的学习次数
-                    const dbIdx = data.dbIndex;
-                    database[dbIdx].count = (database[dbIdx].count || 0) + 1;
-                    
+                    database[data.dbIndex].count = (database[data.dbIndex].count || 0) + 1;
                     setTimeout(() => {
                         el.classList.add('hidden-bubble');
                         firstSelection.el.classList.add('hidden-bubble');
-                        firstSelection = null;
-                        clearLines();
-                        matchedCount += 2;
-                        updateUI(); // 实时刷新资料库中的次数
-                        if (matchedCount === total) showSuccessModal();
+                        firstSelection = null; clearLines();
+                        matchedCount += 2; updateUI();
+                        if (matchedCount === total) successLayer.style.display = 'flex';
                     }, 150);
                 } else {
                     setTimeout(() => {
                         firstSelection.el.classList.remove('selected');
-                        firstSelection = null;
-                        clearLines();
+                        firstSelection = null; clearLines();
                     }, 250);
                 }
-            }
-        }
-
-        function showSuccessModal() {
-            startIndex += currentSize;
-            successLayer.style.display = 'flex';
-            document.getElementById('next-btn').style.display = startIndex >= database.length ? 'none' : 'inline-block';
-            document.getElementById('restart-all-btn').style.display = startIndex >= database.length ? 'inline-block' : 'none';
-            if(startIndex >= database.length) {
-                document.getElementById('modal-title').innerText = "🏆 功德圆满！";
-                document.getElementById('modal-msg').innerText = "你已经学完了词库里的最后一组单词。";
             }
         }
 
@@ -345,6 +354,7 @@
         document.getElementById('add-btn').onclick = addWords;
         document.getElementById('start-game-btn').onclick = initGame;
         document.getElementById('next-btn').onclick = initGame;
+        document.getElementById('close-modal').onclick = () => successLayer.style.display='none';
         document.getElementById('restart-all-btn').onclick = () => { startIndex = 0; initGame(); };
         document.getElementById('size-btns').onclick = (e) => {
             if (e.target.tagName === 'BUTTON') {
