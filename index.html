@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>单词消消乐 - 学习统计版</title>
+    <style>
+        :root {
+            --bg-color: #FDF5E6;
+            --morandi-brown: #A98467;
+            --morandi-green: #829356;
+            --text-dark: #4F4F4F;
+            --pale-bg: rgba(255, 255, 255, 0.85);
+        }
+
+        body {
+            background-color: var(--bg-color);
+            font-family: "PingFang SC", sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+            min-height: 100vh;
+        }
+
+        /* 顶部统计与进度 */
+        .stats-info {
+            color: var(--text-dark);
+            font-size: 1rem;
+            margin-bottom: 10px;
+            font-weight: bold;
+            display: flex;
+            gap: 20px;
+        }
+
+        .progress-container {
+            width: 90%;
+            max-width: 800px;
+            background: #E0E0E0;
+            height: 12px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            overflow: hidden;
+            border: 1px solid #DDE5B6;
+        }
+        #progress-bar {
+            width: 0%;
+            height: 100%;
+            background: var(--morandi-green);
+            transition: width 0.4s ease;
+        }
+
+        /* 控制面板 */
+        .panel {
+            background: var(--pale-bg);
+            padding: 20px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 800px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+
+        textarea {
+            width: 100%; height: 60px; border-radius: 8px; border: 1px solid #ADC178;
+            padding: 10px; box-sizing: border-box; font-size: 14px; margin-bottom: 15px;
+        }
+
+        .controls {
+            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
+        }
+
+        .size-selector button {
+            background: #fff; color: var(--text-dark); border: 1px solid #ccc;
+            padding: 6px 15px; border-radius: 15px; cursor: pointer; font-size: 13px;
+        }
+        .size-selector button.active {
+            background: var(--morandi-brown); color: white; border-color: var(--morandi-brown);
+        }
+
+        .main-btn {
+            background: var(--morandi-brown); color: white; border: none;
+            padding: 10px 20px; border-radius: 20px; cursor: pointer; font-weight: bold;
+            transition: opacity 0.2s;
+        }
+        .main-btn:hover { opacity: 0.9; }
+
+        /* 资料库表格优化 */
+        .database-win {
+            margin-top: 15px; max-height: 150px; overflow-y: auto;
+            background: #fff; border-radius: 8px; font-size: 13px;
+            border: 1px solid #eee;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #f2f2f2; }
+        th { background: #F8F9FA; position: sticky; top: 0; color: #666; }
+        
+        .count-badge {
+            background: #E8F5E9; color: #2E7D32; padding: 2px 8px;
+            border-radius: 10px; font-weight: bold; font-size: 11px;
+        }
+        .del-x { color: #ccc; cursor: pointer; margin-left: 10px; transition: color 0.2s; }
+        .del-x:hover { color: #f44336; }
+
+        /* 游戏板 */
+        #game-board {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 20px; width: 95%; max-width: 1100px; justify-items: center; position: relative;
+        }
+
+        .bubble {
+            width: 120px; height: 120px; border-radius: 50%; display: flex;
+            align-items: center; justify-content: center; color: var(--text-dark);
+            font-size: 1.4rem; font-weight: 900; cursor: pointer; text-align: center;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05); padding: 10px; box-sizing: border-box;
+        }
+        .bubble.selected { transform: scale(1.1); box-shadow: 0 0 20px var(--morandi-brown); border: 3px solid #fff; z-index: 10; }
+        .hidden-bubble { transform: scale(0); opacity: 0; pointer-events: none; }
+
+        #connection-svg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+        .connection-line { stroke: rgba(169, 132, 103, 0.5); stroke-width: 6; stroke-linecap: round; }
+
+        /* 成功弹窗 */
+        #success-layer {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.4); display: none; justify-content: center; align-items: center; z-index: 1000;
+        }
+        .modal {
+            background: white; padding: 40px; border-radius: 20px; text-align: center;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3); max-width: 400px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>单词统计消消乐</h1>
+
+    <div class="stats-info">
+        <div>词库总量: <span id="total-words">0</span></div>
+        <div>当前进度: <span id="learned-words">0</span> / <span id="total-words-repeat">0</span></div>
+    </div>
+
+    <div class="progress-container">
+        <div id="progress-bar"></div>
+    </div>
+
+    <div class="panel">
+        <textarea id="word-input" placeholder="输入新词（格式：apple 苹果 book 书）..."></textarea>
+        <div class="controls">
+            <div class="size-selector" id="size-btns">
+                <span>每轮数量：</span>
+                <button data-size="5" class="active">5</button>
+                <button data-size="10">10</button>
+                <button data-size="20">20</button>
+            </div>
+            <button class="main-btn" id="add-btn">存入资料库</button>
+            <button class="main-btn" id="start-game-btn" style="background:#829356">开始/继续挑战</button>
+        </div>
+
+        <div class="database-win">
+            <table>
+                <thead><tr><th>英文</th><th>中文</th><th>添加日期</th><th>学习次数</th></tr></thead>
+                <tbody id="db-body"></tbody>
+            </table>
+        </div>
+        <div style="text-align: right; margin-top: 10px;">
+            <button id="clear-db" style="background:none; border:none; color:#999; cursor:pointer; font-size:12px;">清空所有数据</button>
+        </div>
+    </div>
+
+    <svg id="connection-svg"></svg>
+    <div id="game-board"></div>
+
+    <div id="success-layer">
+        <div class="modal">
+            <h2 id="modal-title">🎉 挑战成功！</h2>
+            <p id="modal-msg">这一组单词已经全部消灭。</p>
+            <button class="main-btn" id="next-btn">进入下一组</button>
+            <button class="main-btn" id="restart-all-btn" style="display:none; background:#829356">从头复习</button>
+        </div>
+    </div>
+
+    <script>
+        // 增加 count 字段初始化
+        let database = JSON.parse(localStorage.getItem('word_db_v3')) || [];
+        let startIndex = 0;
+        let currentSize = 5;
+        let firstSelection = null;
+        let matchedCount = 0;
+
+        const morandiPales = ['#F0E5E1', '#E8E1E1', '#E7DFD5', '#DBE4E5', '#DDE4DD', '#E4DED3'];
+        const board = document.getElementById('game-board');
+        const dbBody = document.getElementById('db-body');
+        const progressBar = document.getElementById('progress-bar');
+        const successLayer = document.getElementById('success-layer');
+
+        function updateUI() {
+            dbBody.innerHTML = '';
+            database.forEach((item, index) => {
+                const isCurrent = (index >= startIndex && index < startIndex + currentSize);
+                dbBody.insertAdjacentHTML('beforeend', `
+                    <tr style="${isCurrent ? 'background:#FFF9C4; font-weight:bold;' : ''}">
+                        <td>${item.en}</td>
+                        <td>${item.zh}</td>
+                        <td style="color:#999; font-size:11px;">${item.date}</td>
+                        <td>
+                            <span class="count-badge">${item.count || 0} 次</span>
+                            <span class="del-x" title="删除此词" onclick="deleteWord(${index})">✕</span>
+                        </td>
+                    </tr>
+                `);
+            });
+            
+            const total = database.length;
+            document.getElementById('total-words').innerText = total;
+            document.getElementById('total-words-repeat').innerText = total;
+            document.getElementById('learned-words').innerText = Math.min(startIndex, total);
+            
+            localStorage.setItem('word_db_v3', JSON.stringify(database));
+            
+            const overallPercent = total === 0 ? 0 : (startIndex / total) * 100;
+            progressBar.style.width = overallPercent + '%';
+        }
+
+        function addWords() {
+            const text = document.getElementById('word-input').value.trim();
+            if (text) {
+                const tokens = text.split(/\s+/);
+                const date = new Date().toLocaleDateString();
+                for (let i = 0; i < tokens.length; i += 2) {
+                    if (tokens[i] && tokens[i+1]) {
+                        // 新增单词默认次数为 0
+                        database.push({ en: tokens[i], zh: tokens[i+1], date: date, count: 0 });
+                    }
+                }
+                document.getElementById('word-input').value = '';
+                updateUI();
+            }
+        }
+
+        window.deleteWord = (i) => { 
+            if(confirm("确定删除这个单词吗？")) {
+                database.splice(i, 1); 
+                if(startIndex > 0) startIndex--;
+                updateUI(); 
+            }
+        };
+
+        function initGame() {
+            clearLines();
+            board.innerHTML = '';
+            successLayer.style.display = 'none';
+            matchedCount = 0;
+            firstSelection = null;
+
+            let gameWords = database.slice(startIndex, startIndex + currentSize);
+            
+            if (database.length === 0) {
+                board.innerHTML = "<p style='color:#666'>词库空空如也，请先录入单词。</p>";
+                return;
+            }
+            if (gameWords.length === 0 && startIndex > 0) {
+                startIndex = 0; 
+                initGame();
+                return;
+            }
+
+            let items = [];
+            gameWords.forEach((p, idx) => {
+                // 这里的 idx 是相对于 gameWords 的，我们需要它在 database 中的真实索引来更新次数
+                const realIndex = startIndex + idx;
+                items.push({ text: p.en, match: p.zh, dbIndex: realIndex });
+                items.push({ text: p.zh, match: p.en, dbIndex: realIndex });
+            });
+            items.sort(() => Math.random() - 0.5);
+
+            items.forEach(item => {
+                const bubble = document.createElement('div');
+                bubble.className = 'bubble';
+                bubble.innerText = item.text;
+                bubble.style.backgroundColor = morandiPales[Math.floor(Math.random() * morandiPales.length)];
+                bubble.onclick = () => handleSelect(bubble, item, items.length);
+                board.appendChild(bubble);
+            });
+            updateUI();
+        }
+
+        function handleSelect(el, data, total) {
+            if (el.classList.contains('hidden-bubble')) return;
+            if (!firstSelection) {
+                firstSelection = { el, data };
+                el.classList.add('selected');
+            } else if (firstSelection.el === el) {
+                el.classList.remove('selected');
+                firstSelection = null;
+            } else {
+                drawLine(firstSelection.el, el);
+                if (firstSelection.data.match === data.text) {
+                    // 匹配成功：更新该词在资料库中的学习次数
+                    const dbIdx = data.dbIndex;
+                    database[dbIdx].count = (database[dbIdx].count || 0) + 1;
+                    
+                    setTimeout(() => {
+                        el.classList.add('hidden-bubble');
+                        firstSelection.el.classList.add('hidden-bubble');
+                        firstSelection = null;
+                        clearLines();
+                        matchedCount += 2;
+                        updateUI(); // 实时刷新资料库中的次数
+                        if (matchedCount === total) showSuccessModal();
+                    }, 150);
+                } else {
+                    setTimeout(() => {
+                        firstSelection.el.classList.remove('selected');
+                        firstSelection = null;
+                        clearLines();
+                    }, 250);
+                }
+            }
+        }
+
+        function showSuccessModal() {
+            startIndex += currentSize;
+            successLayer.style.display = 'flex';
+            document.getElementById('next-btn').style.display = startIndex >= database.length ? 'none' : 'inline-block';
+            document.getElementById('restart-all-btn').style.display = startIndex >= database.length ? 'inline-block' : 'none';
+            if(startIndex >= database.length) {
+                document.getElementById('modal-title').innerText = "🏆 功德圆满！";
+                document.getElementById('modal-msg').innerText = "你已经学完了词库里的最后一组单词。";
+            }
+        }
+
+        function drawLine(e1, e2) {
+            clearLines();
+            const r1 = e1.getBoundingClientRect(); const r2 = e2.getBoundingClientRect();
+            const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            l.setAttribute("x1", r1.left + r1.width/2); l.setAttribute("y1", r1.top + r1.height/2);
+            l.setAttribute("x2", r2.left + r2.width/2); l.setAttribute("y2", r2.top + r2.height/2);
+            l.setAttribute("class", "connection-line");
+            document.getElementById('connection-svg').appendChild(l);
+        }
+        function clearLines() { document.getElementById('connection-svg').innerHTML = ''; }
+
+        document.getElementById('add-btn').onclick = addWords;
+        document.getElementById('start-game-btn').onclick = initGame;
+        document.getElementById('next-btn').onclick = initGame;
+        document.getElementById('restart-all-btn').onclick = () => { startIndex = 0; initGame(); };
+        document.getElementById('size-btns').onclick = (e) => {
+            if (e.target.tagName === 'BUTTON') {
+                document.querySelectorAll('#size-btns button').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                currentSize = parseInt(e.target.dataset.size);
+            }
+        };
+        document.getElementById('clear-db').onclick = () => { if(confirm("确定清空资料库吗？")) { database=[]; startIndex=0; updateUI(); } };
+
+        updateUI();
+    </script>
+</body>
+</html>
